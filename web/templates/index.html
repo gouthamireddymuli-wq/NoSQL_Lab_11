@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>NoSQL Lab 11 – MongoDB Sharding</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
+<style>
+  :root{--mg:#00684A;--mg-light:#00ED64;}
+  body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',system-ui,sans-serif;}
+  .navbar{background:#00684A!important;}
+  .card{background:#161b22;border:1px solid #30363d;}
+  .card-header{background:#1f2937;border-bottom:1px solid #30363d;}
+  .hero{background:linear-gradient(135deg,#003d2b 0%,#001e2b 100%);padding:80px 0;}
+  .lab-card{transition:transform .2s,box-shadow .2s;}
+  .lab-card:hover{transform:translateY(-6px);box-shadow:0 12px 40px rgba(0,237,100,.2);}
+  .badge-mongo{background:#00ED64;color:#001e2b;font-weight:700;}
+  .tech-pill{display:inline-block;background:#1f2937;border:1px solid #30363d;border-radius:999px;padding:4px 14px;font-size:.78rem;margin:3px;}
+  .shard-node{background:#1f2937;border:2px solid #30363d;border-radius:12px;padding:20px;text-align:center;min-width:120px;}
+  .mongos-node{background:#003d2b;border:2px solid #00ED64;border-radius:12px;padding:16px 24px;text-align:center;}
+  .config-node{background:#1a1a2e;border:2px solid #4f46e5;border-radius:12px;padding:12px 20px;text-align:center;font-size:.8rem;}
+</style>
+</head>
+<body>
+<nav class="navbar navbar-dark navbar-expand-lg">
+  <div class="container">
+    <a class="navbar-brand fw-bold" href="/"><i class="bi bi-diagram-3-fill me-2"></i>NoSQL Lab 11</a>
+    <div class="navbar-nav ms-auto">
+      <a class="nav-link" href="/lab1"><i class="bi bi-grid-3x3-gap me-1"></i>Lab 11.1</a>
+      <a class="nav-link" href="/lab2"><i class="bi bi-bar-chart-line me-1"></i>Lab 11.2</a>
+    </div>
+  </div>
+</nav>
+
+<section class="hero text-center text-white">
+  <div class="container">
+    <h1 class="display-4 fw-bold mb-3"><i class="bi bi-diagram-3-fill me-3"></i>MongoDB Sharding</h1>
+    <p class="lead mb-4">Shard Key Evaluation · Hotspot Detection · Distribution Analysis · Query Targeting</p>
+    <span class="badge badge-mongo fs-6 px-4 py-2">Chapter 11 Labs</span>
+  </div>
+</section>
+
+<div class="container my-5">
+
+  <!-- Lab cards -->
+  <div class="row g-4 justify-content-center mb-5">
+    <div class="col-md-5">
+      <div class="card lab-card h-100">
+        <div class="card-header py-3">
+          <h5 class="mb-0"><i class="bi bi-grid-3x3-gap me-2 text-success"></i>Lab 11.1 – Shard Key Evaluation</h5>
+        </div>
+        <div class="card-body">
+          <p class="text-secondary">Analyse four candidate shard keys for an e-commerce order management system. Build a scored decision matrix across cardinality, distribution, query targeting, and monotonicity.</p>
+          <div class="mb-3">
+            <span class="tech-pill">Cardinality</span>
+            <span class="tech-pill">Distribution</span>
+            <span class="tech-pill">Query Targeting</span>
+            <span class="tech-pill">Hotspot Risk</span>
+          </div>
+          <ul class="list-unstyled text-secondary small">
+            <li><i class="bi bi-check-circle-fill text-success me-2"></i>Four candidates: order_id, customer_id, order_date, hashed(customer_id)</li>
+            <li><i class="bi bi-check-circle-fill text-success me-2"></i>Scored decision matrix with verdicts</li>
+            <li><i class="bi bi-check-circle-fill text-success me-2"></i>Recommended key with justification</li>
+          </ul>
+        </div>
+        <div class="card-footer">
+          <a href="/lab1" class="btn btn-success w-100"><i class="bi bi-arrow-right-circle me-2"></i>Open Lab 11.1</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-5">
+      <div class="card lab-card h-100">
+        <div class="card-header py-3">
+          <h5 class="mb-0"><i class="bi bi-bar-chart-line me-2 text-warning"></i>Lab 11.2 – Hotspot Detection</h5>
+        </div>
+        <div class="card-body">
+          <p class="text-secondary">Compare monotonically-increasing timestamp shard keys against hashed shard keys. Visualise document distribution across shards and compare scatter-gather query plans.</p>
+          <div class="mb-3">
+            <span class="tech-pill">Monotonic Keys</span>
+            <span class="tech-pill">Hashed Keys</span>
+            <span class="tech-pill">Distribution Chart</span>
+            <span class="tech-pill">explain() Analysis</span>
+          </div>
+          <ul class="list-unstyled text-secondary small">
+            <li><i class="bi bi-check-circle-fill text-success me-2"></i>Insert 10 000 docs into hotspot_data and even_data</li>
+            <li><i class="bi bi-check-circle-fill text-success me-2"></i>Visual shard distribution comparison</li>
+            <li><i class="bi bi-check-circle-fill text-success me-2"></i>Query plan (explain) side-by-side</li>
+          </ul>
+        </div>
+        <div class="card-footer">
+          <a href="/lab2" class="btn btn-warning w-100 text-dark"><i class="bi bi-arrow-right-circle me-2"></i>Open Lab 11.2</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Architecture diagram -->
+  <div class="card">
+    <div class="card-header"><h6 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>Sharded Cluster Architecture</h6></div>
+    <div class="card-body py-4">
+      <div class="d-flex flex-column align-items-center gap-3">
+        <!-- Client -->
+        <div class="text-center">
+          <i class="bi bi-laptop fs-3 text-info"></i>
+          <div class="small text-secondary mt-1">Application / Client</div>
+        </div>
+        <i class="bi bi-arrow-down fs-5 text-secondary"></i>
+        <!-- mongos -->
+        <div class="mongos-node">
+          <i class="bi bi-router fs-4 text-success d-block mb-1"></i>
+          <strong>mongos</strong>
+          <div class="small text-secondary">Query Router</div>
+        </div>
+        <div class="d-flex gap-4 align-items-start">
+          <div class="text-center">
+            <i class="bi bi-arrow-down fs-5 text-secondary"></i><br/>
+            <div class="config-node mt-1">
+              <i class="bi bi-gear-fill text-indigo d-block mb-1" style="color:#818cf8"></i>
+              <strong>Config Servers</strong><br/>
+              <span class="text-secondary">Chunk metadata</span>
+            </div>
+          </div>
+          <div class="d-flex flex-column align-items-center gap-2">
+            <i class="bi bi-arrow-down fs-5 text-secondary"></i>
+            <div class="d-flex gap-3">
+              <div class="shard-node">
+                <i class="bi bi-server fs-3 text-success d-block mb-1"></i>
+                <strong>Shard A</strong><br/>
+                <span class="small text-secondary">rs0</span>
+              </div>
+              <div class="shard-node">
+                <i class="bi bi-server fs-3 text-primary d-block mb-1"></i>
+                <strong>Shard B</strong><br/>
+                <span class="small text-secondary">rs1</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tech overview -->
+  <div class="card mt-4">
+    <div class="card-header"><h6 class="mb-0"><i class="bi bi-info-circle me-2"></i>Technology Stack</h6></div>
+    <div class="card-body row g-4 text-center text-secondary small">
+      <div class="col-6 col-md-3">
+        <i class="bi bi-server fs-2 text-success d-block mb-2"></i>
+        <strong>MongoDB 7</strong><br/>WiredTiger · Sharding
+      </div>
+      <div class="col-6 col-md-3">
+        <i class="bi bi-diagram-3 fs-2 text-warning d-block mb-2"></i>
+        <strong>Sharded Cluster</strong><br/>mongos · Config Servers
+      </div>
+      <div class="col-6 col-md-3">
+        <i class="bi bi-hash fs-2 text-info d-block mb-2"></i>
+        <strong>Hashed Sharding</strong><br/>Uniform chunk distribution
+      </div>
+      <div class="col-6 col-md-3">
+        <i class="bi bi-flask fs-2 text-secondary d-block mb-2"></i>
+        <strong>Flask + PyMongo</strong><br/>REST API · live dashboard
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="text-center text-secondary py-4 small border-top" style="border-color:#30363d!important">
+  NoSQL Lab 11 · MongoDB Sharding & Shard Key Analysis · Docker Containerised
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

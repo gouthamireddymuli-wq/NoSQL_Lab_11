@@ -1,0 +1,32 @@
+services:
+
+  mongo:
+    image: mongo:7.0
+    container_name: mongo_lab11
+    restart: unless-stopped
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo_lab11_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  web:
+    build: .
+    image: nosql-lab11:latest
+    container_name: nosql_lab11_web
+    restart: unless-stopped
+    ports:
+      - "5001:5000"
+    environment:
+      MONGO_URI: mongodb://mongo:27017/
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+volumes:
+  mongo_lab11_data:

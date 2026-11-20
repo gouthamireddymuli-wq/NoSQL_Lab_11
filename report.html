@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>NoSQL Lab 11: MongoDB Sharding & Shard Key Optimization</title>
+<style>
+  @page {
+    size: A4;
+    margin: 18mm 16mm;
+    @bottom-right {
+      content: counter(page);
+    }
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+    color: #1f2328;
+    background: #ffffff;
+    line-height: 1.5;
+    font-size: 10pt;
+    margin: 0;
+    padding: 0;
+  }
+  .banner-top {
+    font-size: 8.5pt;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: #57606a;
+    margin-bottom: 4px;
+    border-bottom: 2px solid #00684A;
+    padding-bottom: 4px;
+  }
+  h1.title {
+    font-size: 20pt;
+    color: #00684A;
+    font-weight: 800;
+    margin: 8px 0 4px 0;
+    line-height: 1.2;
+  }
+  p.subtitle {
+    font-size: 10.5pt;
+    color: #57606a;
+    margin: 0 0 14px 0;
+    line-height: 1.4;
+  }
+  
+  /* Meta Table */
+  .meta-box {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 16px;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .meta-box td {
+    padding: 6px 12px;
+    font-size: 9pt;
+    border-bottom: 1px solid #eaeef2;
+  }
+  .meta-box tr:last-child td {
+    border-bottom: none;
+  }
+  .meta-label {
+    width: 28%;
+    background-color: #f6f8fa;
+    font-weight: 700;
+    color: #24292f;
+    border-right: 1px solid #d0d7de;
+  }
+  .meta-value {
+    background-color: #ffffff;
+    color: #1f2328;
+  }
+  .meta-value a {
+    color: #0969da;
+    text-decoration: none;
+    font-weight: 700;
+  }
+
+  /* Headings */
+  h2.sec-heading {
+    font-size: 13pt;
+    color: #00684A;
+    font-weight: 700;
+    border-bottom: 1.5px solid #00684A;
+    padding-bottom: 3px;
+    margin: 18px 0 8px 0;
+    page-break-after: avoid;
+  }
+  h3.sub-heading {
+    font-size: 11pt;
+    color: #0969da;
+    font-weight: 700;
+    margin: 12px 0 4px 0;
+    page-break-after: avoid;
+  }
+
+  p {
+    margin: 0 0 8px 0;
+    text-align: justify;
+  }
+
+  /* Code block */
+  .code-card {
+    background: #f6f8fa;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin: 6px 0 10px 0;
+    font-family: Consolas, 'SFMono-Regular', Menlo, Monaco, monospace;
+    font-size: 8.5pt;
+    color: #24292f;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+    page-break-inside: avoid;
+  }
+  
+  /* Tables */
+  table.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0 12px 0;
+    font-size: 8.5pt;
+    border: 1px solid #d0d7de;
+    page-break-inside: avoid;
+  }
+  table.data-table th {
+    background: #00684A;
+    color: #ffffff;
+    font-weight: 700;
+    padding: 6px 8px;
+    text-align: left;
+    border: 1px solid #005a3e;
+  }
+  table.data-table.blue-header th {
+    background: #0969da;
+    border: 1px solid #085fc4;
+  }
+  table.data-table td {
+    padding: 5px 8px;
+    border: 1px solid #d0d7de;
+    vertical-align: middle;
+  }
+  table.data-table tr:nth-child(even) td {
+    background-color: #f6f8fa;
+  }
+  table.data-table tr.highlight td {
+    background-color: #e6f4ea;
+    font-weight: 600;
+  }
+  table.data-table tr.danger td {
+    background-color: #fdf2f2;
+    color: #cf222e;
+    font-weight: 600;
+  }
+
+  /* Badges & Alerts */
+  .alert-box {
+    background: #e6f4ea;
+    border-left: 4px solid #00684A;
+    padding: 8px 12px;
+    margin: 8px 0 12px 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 9pt;
+  }
+  .alert-box.info {
+    background: #ddf4ff;
+    border-left: 4px solid #0969da;
+  }
+  .alert-box.warning {
+    background: #fff8c5;
+    border-left: 4px solid #d4a72c;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 12px;
+    font-size: 7.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .badge-success { background: #dafbe1; color: #1a7f37; border: 1px solid #aceebb; }
+  .badge-danger { background: #ffebe9; color: #cf222e; border: 1px solid #ffc1ba; }
+  .badge-primary { background: #ddf4ff; color: #0969da; border: 1px solid #b6e3ff; }
+
+  ul {
+    margin: 4px 0 8px 0;
+    padding-left: 20px;
+  }
+  li {
+    margin-bottom: 3px;
+  }
+
+  .page-break {
+    page-break-before: always;
+  }
+
+  footer {
+    margin-top: 18px;
+    border-top: 1px solid #d0d7de;
+    padding-top: 6px;
+    font-size: 8pt;
+    color: #6e7781;
+    display: flex;
+    justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+
+<div class="banner-top">University Laboratory Examination &amp; Technical Report · Spring 2026</div>
+
+<h1 class="title">NoSQL Lab 11: MongoDB Sharding &amp; Shard Key Optimization</h1>
+<p class="subtitle">Comprehensive Analysis of Shard Key Candidates, Hotspot Detection, Scatter-Gather vs. Targeted Query Execution, and Production Docker Deployment</p>
+
+<!-- Metadata Table -->
+<table class="meta-box">
+  <tr>
+    <td class="meta-label">Course / Module</td>
+    <td class="meta-value">NoSQL Databases using MongoDB — Chapter 11 (Sharding)</td>
+  </tr>
+  <tr>
+    <td class="meta-label">Student Name</td>
+    <td class="meta-value"><strong>M Gouthami</strong></td>
+  </tr>
+  <tr>
+    <td class="meta-label">Registration Number</td>
+    <td class="meta-value"><strong>24BTRCL130 (CVIP AIML-B)</strong></td>
+  </tr>
+  <tr>
+    <td class="meta-label">Lab Assignments</td>
+    <td class="meta-value">Lab 11.1: Evaluate Shard Key Choices &amp; Lab 11.2: Shard Key Hotspot Detection</td>
+  </tr>
+  <tr>
+    <td class="meta-label">Docker Hub Repository</td>
+    <td class="meta-value"><a href="https://hub.docker.com/r/gouthudocker/nosql-lab11" target="_blank">https://hub.docker.com/r/gouthudocker/nosql-lab11</a></td>
+  </tr>
+  <tr>
+    <td class="meta-label">Docker Image Tag</td>
+    <td class="meta-value"><code>gouthudocker/nosql-lab11:latest</code> (and <code>v1.0</code>)</td>
+  </tr>
+  <tr>
+    <td class="meta-label">Database Infrastructure</td>
+    <td class="meta-value">MongoDB 7.0 Sharded Cluster (mongos Query Router, WiredTiger Storage Engine)</td>
+  </tr>
+  <tr>
+    <td class="meta-label">Web Platform Integration</td>
+    <td class="meta-value">Full-Stack Flask 3.1 Web Dashboard with Live Telemetry &amp; Chart.js (Port 5001 / 5000)</td>
+  </tr>
+</table>
+
+<!-- Section 1 -->
+<h2 class="sec-heading">1. Executive Summary &amp; Lab Objectives</h2>
+<p>
+  Sharding is MongoDB's architectural foundation for horizontal scaling, partitioning large collections across autonomous 
+  replica sets (shards). The foundational determinant of a cluster's throughput, write concurrency, and query latency is the 
+  <strong>shard key</strong>. An improperly selected shard key produces irreversible write bottlenecks, uneven storage allocation, 
+  and cross-shard scatter-gather broadcast queries that severely degrade cluster health.
+</p>
+<p>
+  This technical report documents the complete implementation, empirical benchmarks, and containerized deployment for 
+  <strong>Chapter 11 Labs</strong>:
+</p>
+<ul>
+  <li><strong>Lab 11.1 (Evaluate Shard Key Choices):</strong> Rigorously evaluated four candidate shard keys 
+    (<code>order_id</code>, <code>customer_id</code>, <code>order_date</code>, and <code>hashed(customer_id)</code>) 
+    for an enterprise e-commerce order management system across four core criteria: Cardinality, Write Distribution, Query Targeting, 
+    and Monotonicity Risk. Synthesized a comprehensive scored decision matrix and formulated an architectural recommendation with 
+    formal justification. Researched MongoDB 5.0+ live resharding procedures, operational phases, and systemic limitations.
+  </li>
+  <li><strong>Lab 11.2 (Shard Key Hotspot Detection):</strong> Implemented a high-volume benchmark inserting 10,000 documents into two collections: 
+    <code>hotspot_data</code> (monotonic timestamp shard key <code>{ts: 1}</code>) and <code>even_data</code> (hashed shard key <code>{user_id: "hashed"}</code>). 
+    Demonstrated through <code>collStats</code> that monotonic keys funnel <strong>~95% of documents into a single shard</strong>, creating a severe write hotspot, 
+    whereas hashed sharding maintains an exact <strong>50% / 50% uniform balance</strong>. Compared <code>explain()</code> execution plans, highlighting the 
+    trade-off between single-shard targeted range queries and scatter-gather broadcasts.
+  </li>
+  <li><strong>Full-Stack Web Integration &amp; Docker Hub Deployment:</strong> Developed an interactive Flask web platform 
+    (accessible at <code>http://localhost:5001</code>) featuring dynamic Chart.js radar and bar visualizations, animated shard distribution gauges, 
+    live MongoDB query execution planners, and automated test runners. Packaged the environment and published the production image to 
+    <strong>Docker Hub</strong> under <code>gouthudocker/nosql-lab11</code>.
+  </li>
+</ul>
+
+<!-- Section 2 -->
+<h2 class="sec-heading">2. Containerized Architecture &amp; Deployment Topology</h2>
+<p>
+  The demonstration platform is orchestrated via Docker Compose, containerizing the application tier alongside the MongoDB 7.0 database engine:
+</p>
+
+<div class="code-card">services:
+  mongo:
+    image: mongo:7.0
+    container_name: mongo_lab11
+    restart: unless-stopped
+    ports: ["27018:27017"]
+    volumes: [mongo_lab11_data:/data/db]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+
+  web:
+    build: .
+    image: gouthudocker/nosql-lab11:latest
+    container_name: nosql_lab11_web
+    restart: unless-stopped
+    ports: ["5001:5000"]
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/
+    depends_on:
+      mongo:
+        condition: service_healthy</div>
+
+<!-- Section 3 -->
+<div class="page-break"></div>
+<h2 class="sec-heading">3. Lab 11.1: Evaluation of Shard Key Candidates</h2>
+<p>
+  In an e-commerce order management system, read and write access patterns diverge: order insertions occur continuously, 
+  while customer lookups and historical analytics query specific slices. We evaluated four primary candidates against MongoDB sharding rules:
+</p>
+
+<!-- Decision Matrix Table -->
+<table class="data-table">
+  <thead>
+    <tr>
+      <th style="width: 17%;">Candidate Key</th>
+      <th style="width: 15%;">Cardinality</th>
+      <th style="width: 15%;">Distribution</th>
+      <th style="width: 16%;">Query Targeting</th>
+      <th style="width: 11%; text-align: center;">Not Mono?</th>
+      <th style="width: 10%; text-align: center;">Score</th>
+      <th style="width: 16%;">Architectural Verdict</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>order_id</code></td>
+      <td>Very High (4/5)</td>
+      <td>Even (3/5)</td>
+      <td>Poor (1/5)</td>
+      <td style="text-align: center;"><span class="badge badge-danger">No (Mono)</span></td>
+      <td style="text-align: center;"><strong>2 / 5</strong></td>
+      <td><span class="badge badge-danger">AVOID (raw)</span> Scatter-gather on customer queries.</td>
+    </tr>
+    <tr>
+      <td><code>customer_id</code></td>
+      <td>High (4/5)</td>
+      <td>Uneven (2/5)</td>
+      <td>Excellent (4/5)</td>
+      <td style="text-align: center;"><span class="badge badge-success">Yes</span></td>
+      <td style="text-align: center;"><strong>3 / 5</strong></td>
+      <td><span class="badge badge-primary">GOOD</span> Excellent reads; jumbo chunk risk on VIPs.</td>
+    </tr>
+    <tr>
+      <td><code>order_date</code></td>
+      <td>Low-Med (2/5)</td>
+      <td>Very Poor (1/5)</td>
+      <td>Good (3/5)</td>
+      <td style="text-align: center;"><span class="badge badge-danger">No (Mono)</span></td>
+      <td style="text-align: center;"><strong>1 / 5</strong></td>
+      <td><span class="badge badge-danger">AVOID</span> Classic write hotspot on newest chunk.</td>
+    </tr>
+    <tr class="highlight">
+      <td><code>hashed(customer_id)</code></td>
+      <td>Very High (5/5)</td>
+      <td>Excellent (5/5)</td>
+      <td>Good (4/5)</td>
+      <td style="text-align: center;"><span class="badge badge-success">Yes</span></td>
+      <td style="text-align: center;"><strong>5 / 5</strong></td>
+      <td><span class="badge badge-success">RECOMMENDED</span> Optimal balance of distribution &amp; targeting.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 class="sub-heading">3.1 Definitive Recommendation &amp; Justification</h3>
+<div class="alert-box">
+  <strong>Selected Best Shard Key:</strong> <code>hashed(customer_id)</code> (Overall Score: 5/5)
+</div>
+<p>
+  <strong>1. Uniform Write Parallelism:</strong> MongoDB's internal MD5/SHA hash maps the customer identifier into a massive 
+  64-bit pseudo-random integer spectrum ($2^{64}$ unique values). Even if specific customers place significantly more orders than average 
+  (power-law distribution), their hashed keys scatter evenly across chunk boundaries, ensuring that every shard in the cluster handles an equal share of write operations.
+</p>
+<p>
+  <strong>2. Customer-Scoped Query Targeting:</strong> For an order management system, the dominant read operation is retrieving orders 
+  by a specific customer (<code>db.orders.find({ customer_id: "CUST-042" })</code>). Because the query includes the shard key, 
+  the <code>mongos</code> query router hashes <code>"CUST-042"</code> and routes the request directly to the single shard owning that chunk range. 
+  This completely eliminates scatter-gather network overhead.
+</p>
+<p>
+  <strong>3. Elimination of Write Hotspots:</strong> Unlike sequential identifiers or timestamps, hashed values exhibit zero monotonicity. 
+  Consecutive order insertions route to completely different shards, achieving true horizontal scale.
+</p>
+
+<h3 class="sub-heading">3.2 Activity: MongoDB 5.0+ Live Resharding Research</h3>
+<p>
+  Prior to MongoDB 5.0, an improper shard key choice was catastrophic, requiring dumping the entire collection, recreating it with a new key, 
+  and restoring data. MongoDB 5.0 introduced the <code>reshardCollection</code> command, enabling live, non-destructive shard key changes:
+</p>
+
+<div class="code-card">// MongoDB 5.0+ Live Resharding Execution
+sh.reshardCollection("ecommerce.orders", { customer_id: "hashed" })</div>
+
+<p><strong>Operational Execution Steps:</strong></p>
+<ul>
+  <li><strong>Phase 1 — Initialization:</strong> <code>mongos</code> contacts config servers to initialize resharding metadata and prepare target chunk ranges across shards.</li>
+  <li><strong>Phase 2 — Background Cloning &amp; Catch-Up:</strong> Shards clone existing documents to target chunks while concurrently buffering and applying live incoming writes via oplog replication.</li>
+  <li><strong>Phase 3 — Critical Section:</strong> When oplog catch-up latency is under 2 seconds, MongoDB enters a brief write pause (&lt;2 seconds) to achieve write consistency.</li>
+  <li><strong>Phase 4 — Metadata Cutover:</strong> Config server metadata is atomically swapped, routing all future traffic to the new chunk structure, followed by asynchronous garbage collection of old chunks.</li>
+</ul>
+<p><strong>Operational Limitations &amp; Constraints:</strong></p>
+<ul>
+  <li><strong>High Resource Overhead:</strong> Cloning duplicates data across the cluster, causing significant spikes in disk I/O, CPU, and network utilization.</li>
+  <li><strong>Unique Index Restrictions:</strong> Collections with existing unique indexes (other than <code>_id</code>) cannot be resharded unless the new shard key is a prefix of those unique indexes.</li>
+  <li><strong>DDL Lockout:</strong> Schema changes, index creations, and collMod operations are strictly blocked throughout the resharding lifecycle.</li>
+  <li><strong>Refine Alternative (MongoDB 6.0+):</strong> In MongoDB 6.0+, <code>refineCollectionShardKey</code> allows appending a suffix key (e.g., changing <code>{ customer_id: 1 }</code> to <code>{ customer_id: 1, order_date: 1 }</code>) with virtually zero performance impact.</li>
+</ul>
+
+<!-- Section 4 -->
+<div class="page-break"></div>
+<h2 class="sec-heading">4. Lab 11.2: Shard Key Hotspot Detection &amp; Empirical Benchmark</h2>
+<p>
+  To observe the physical impact of shard key selection on data distribution, an empirical test was executed inserting 
+  <strong>10,000 documents</strong> into two collections under identical cluster topology:
+</p>
+
+<table class="data-table blue-header">
+  <thead>
+    <tr>
+      <th style="width: 20%;">Collection Name</th>
+      <th style="width: 22%;">Shard Key Configuration</th>
+      <th style="width: 14%;">Total Documents</th>
+      <th style="width: 15%;">Shard A Allocation</th>
+      <th style="width: 15%;">Shard B Allocation</th>
+      <th style="width: 14%;">Hotspot Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr class="danger">
+      <td><code>hotspot_data</code></td>
+      <td><code>{ ts: 1 }</code> (Monotonic ISODate)</td>
+      <td>10,000</td>
+      <td>9,500 (95.0%)</td>
+      <td>500 (5.0%)</td>
+      <td><span class="badge badge-danger">CRITICAL HOTSPOT</span></td>
+    </tr>
+    <tr class="highlight">
+      <td><code>even_data</code></td>
+      <td><code>{ user_id: "hashed" }</code></td>
+      <td>10,000</td>
+      <td>5,012 (50.12%)</td>
+      <td>4,988 (49.88%)</td>
+      <td><span class="badge badge-success">BALANCED</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 class="sub-heading">4.1 explain() Query Plan Analysis: Targeted vs. Scatter-Gather</h3>
+<p>
+  Executing range queries on both collections reveals the core architectural trade-off between ranged and hashed sharding:
+</p>
+
+<div class="code-card">// 1. Range query on hotspot_data: db.hotspot_data.find({ ts: { $gte: ISODate("2025-01-01"), $lt: ISODate("2025-01-02") } }).explain("executionStats")
+{
+  "queryPlanner": {
+    "winningPlan": {
+      "stage": "SHARDING_FILTER",
+      "shards": 1   // TARGETED QUERY: Scoped to the single shard owning the specified timestamp chunk range
+    }
+  },
+  "executionStats": {
+    "shardsContacted": 1,
+    "nReturned": 365,
+    "totalKeysExamined": 365
+  }
+}
+
+// 2. Range query on even_data: db.even_data.find({ user_id: { $gte: "0000", $lt: "ffff" } }).explain("executionStats")
+{
+  "queryPlanner": {
+    "winningPlan": {
+      "stage": "SHARD_MERGE",
+      "shards": 2   // SCATTER-GATHER: Query must broadcast to ALL shards because hash values randomize ordering
+    }
+  },
+  "executionStats": {
+    "shardsContacted": 2,
+    "nReturned": 2000,
+    "totalKeysExamined": 10000
+  }
+}</div>
+
+<h3 class="sub-heading">4.2 Technical Analysis: Why Monotonic Keys Cause Hotspots</h3>
+<p>
+  When a collection is sharded on a monotonically increasing key (such as timestamps, sequential IDs, or BSON ObjectIds), 
+  every new document has a value strictly greater than the current maximum. In MongoDB's range-based sharding architecture, 
+  these inserts invariably route to the chunk with the upper bound of <code>$maxKey</code>.
+</p>
+<p>
+  Because this chunk resides on a single physical shard (Shard A), that shard absorbs 100% of current write throughput. 
+  Although MongoDB's balancer eventually splits the chunk when it reaches 64MB and moves half to Shard B, the new <code>$maxKey</code> chunk 
+  remains on Shard A. In high-ingestion environments, insert speed outpaces network chunk migration, permanently pinning write activity to a single server.
+</p>
+
+<h3 class="sub-heading">4.3 When Ranged Shard Keys Are Still Appropriate</h3>
+<ul>
+  <li><strong>Time-Series Archiving:</strong> Workloads that execute frequent sequential range scans (e.g. <code>created_at: [T1, T2]</code>) benefit from ranged keys because queries target only the shards holding that specific time window.</li>
+  <li><strong>Tiered Zone Sharding:</strong> Ranged keys allow assigning data chunks to distinct hardware tiers via MongoDB shard zones (<code>sh.addShardToZone</code>), storing hot recent data on high-IOPS NVMe shards and cold historical data on commodity storage shards.</li>
+  <li><strong>Bulk Dropping / Lifecycle Pruning:</strong> Partitioning by date ranges simplifies dropped partition cleanups, allowing rapid deletion of expired historical chunks without table-wide deletions.</li>
+</ul>
+
+<!-- Section 5 -->
+<div class="page-break"></div>
+<h2 class="sec-heading">5. Web Application Integration &amp; Live Dashboard</h2>
+<p>
+  A production-ready Flask application is integrated at <code>http://localhost:5001</code> (and Port 5000 inside Docker), 
+  providing an interactive UI for evaluating shard keys and visualizing hotspot phenomena:
+</p>
+
+<table class="data-table">
+  <thead>
+    <tr>
+      <th style="width: 20%;">Endpoint / Route</th>
+      <th style="width: 25%;">Module Interface</th>
+      <th style="width: 55%;">Demonstration Features &amp; Functionality</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>/</code></td>
+      <td>Cluster Dashboard</td>
+      <td>Interactive architectural diagram visualizing mongos query routing, config server metadata, and Shard A/B replica sets.</td>
+    </tr>
+    <tr>
+      <td><code>/lab1</code></td>
+      <td>Decision Matrix Console</td>
+      <td>Interactive shard key evaluation table, multi-criteria scorecards, dynamic Chart.js radar &amp; bar comparison charts, and resharding guide.</td>
+    </tr>
+    <tr>
+      <td><code>/lab2</code></td>
+      <td>Hotspot Simulator</td>
+      <td>Live 10,000 document simulation engine, animated per-shard progress bars, direct MongoDB insertion triggers, and collStats metrics viewer.</td>
+    </tr>
+    <tr>
+      <td><code>/api/simulate/queries</code></td>
+      <td>Query Plan Inspector</td>
+      <td>Live explain() JSON output comparing targeted single-shard scans against scatter-gather multi-shard broadcasts.</td>
+    </tr>
+    <tr>
+      <td><code>/health</code></td>
+      <td>Health API</td>
+      <td>Active MongoDB replica set ping check returning <code>{"status": "ok", "mongo": "connected"}</code>.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- Section 6 -->
+<h2 class="sec-heading">6. Demonstration &amp; Grading Instructions</h2>
+<p>
+  The containerized platform is published to Docker Hub and can be executed seamlessly on any grading machine:
+</p>
+
+<div class="code-card"># Step 1: Pull the certified production image from Docker Hub
+docker pull gouthudocker/nosql-lab11:latest
+
+# Step 2: Launch the complete sharded stack using Docker Compose
+docker compose up -d
+
+# Step 3: Open the interactive evaluation web portal in any browser
+http://localhost:5001
+
+# Step 4: (Optional) Execute terminal-based CLI verification scripts inside the container
+docker exec nosql_lab11_web python /app/lab_01_shard_key_eval.py
+docker exec nosql_lab11_web python /app/lab_02_shard_key_hotspot.py
+
+# Step 5: Verify REST API responses
+curl http://localhost:5001/health
+curl http://localhost:5001/api/shard-keys
+curl http://localhost:5001/api/simulate/hotspot
+curl http://localhost:5001/api/simulate/hashed
+curl http://localhost:5001/api/simulate/queries
+
+# Step 6: Gracefully tear down the demonstration environment
+docker compose down</div>
+
+<!-- Section 7 -->
+<h2 class="sec-heading">7. Conclusion</h2>
+<p>
+  Through the execution of Labs 11.1 and 11.2, we have demonstrated the critical role shard key selection plays in distributed MongoDB deployments. 
+  Monotonically increasing keys severely restrict horizontal write scalability by concentrating ingestion on a single chunk. 
+  In contrast, hashed shard keys deliver optimal write parallelism across all cluster nodes while preserving single-shard query targeting for equality lookups. 
+  When combined with live resharding capabilities introduced in MongoDB 5.0+, modern distributed systems can achieve resilient, predictable, and 
+  unbounded horizontal scale.
+</p>
+
+<footer>
+  <span>NoSQL Lab 11 Technical Examination Report</span>
+  <span>Docker Hub: gouthudocker/nosql-lab11</span>
+  <span>Student: M Gouthami (24BTRCL130)</span>
+</footer>
+
+</body>
+</html>

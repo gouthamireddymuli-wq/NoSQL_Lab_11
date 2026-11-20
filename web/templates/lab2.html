@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Lab 11.2 – Hotspot Detection</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+  :root{--mg:#00684A;--mg-light:#00ED64;}
+  body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',system-ui,sans-serif;}
+  .navbar{background:#00684A!important;}
+  .card{background:#161b22;border:1px solid #30363d;}
+  .card-header{background:#1f2937;border-bottom:1px solid #30363d;}
+  code{color:#00ED64;background:#1f2937;padding:2px 6px;border-radius:4px;}
+  .shard-bar{height:28px;border-radius:6px;transition:width .6s ease;}
+  .log-box{background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:14px;font-family:monospace;font-size:.82rem;max-height:280px;overflow-y:auto;color:#9ca3af;}
+  .log-box .ok{color:#00ED64;}
+  .log-box .warn{color:#fbbf24;}
+  .log-box .err{color:#ef4444;}
+  .explain-box{background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:14px;font-family:monospace;font-size:.78rem;white-space:pre-wrap;color:#9ca3af;}
+  .btn-action{min-width:160px;}
+  .step-num{background:#00684A;color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem;flex-shrink:0;}
+  .hotspot-color{color:#ef4444;}
+  .even-color{color:#00ED64;}
+  table th{background:#1f2937;color:#9ca3af;font-size:.82rem;text-transform:uppercase;}
+</style>
+</head>
+<body>
+<nav class="navbar navbar-dark navbar-expand-lg">
+  <div class="container">
+    <a class="navbar-brand fw-bold" href="/"><i class="bi bi-diagram-3-fill me-2"></i>NoSQL Lab 11</a>
+    <div class="navbar-nav ms-auto">
+      <a class="nav-link" href="/lab1"><i class="bi bi-grid-3x3-gap me-1"></i>Lab 11.1</a>
+      <a class="nav-link active" href="/lab2"><i class="bi bi-bar-chart-line me-1"></i>Lab 11.2</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container my-4">
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <i class="bi bi-bar-chart-line fs-2 text-warning"></i>
+    <div>
+      <h2 class="mb-0">Lab 11.2 – Shard Key Hotspot Detection</h2>
+      <p class="text-secondary mb-0">Compare monotonic timestamp key vs hashed user_id · 10 000 documents · Distribution &amp; Query Plans</p>
+    </div>
+  </div>
+
+  <!-- Step guide -->
+  <div class="card mb-4">
+    <div class="card-header"><h6 class="mb-0"><i class="bi bi-list-ol me-2"></i>Lab Steps</h6></div>
+    <div class="card-body">
+      <div class="d-flex flex-column gap-3">
+        <div class="d-flex gap-3 align-items-start">
+          <div class="step-num">1</div>
+          <div>
+            <strong>Simulate / Insert data</strong> into two collections:
+            <code>hotspot_data</code> (shard key: <code>{ts: 1}</code>) and
+            <code>even_data</code> (shard key: <code>{user_id: "hashed"}</code>)
+          </div>
+        </div>
+        <div class="d-flex gap-3 align-items-start">
+          <div class="step-num">2</div>
+          <div>
+            <strong>View distribution</strong>: See per-shard document counts. Hotspot_data concentrates ~95% on one shard; even_data distributes ~50/50.
+          </div>
+        </div>
+        <div class="d-flex gap-3 align-items-start">
+          <div class="step-num">3</div>
+          <div>
+            <strong>Compare query plans</strong>: Range queries on <code>hotspot_data</code> target 1 shard (efficient for range). Range queries on <code>even_data</code> (hashed) broadcast to all shards.
+          </div>
+        </div>
+        <div class="d-flex gap-3 align-items-start">
+          <div class="step-num">4</div>
+          <div>
+            <strong>Read the conclusion</strong>: Understand trade-offs and when each strategy is appropriate.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Action buttons -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-header">
+          <h6 class="mb-0"><i class="bi bi-thermometer-high me-2 hotspot-color"></i>Collection 1: <code>hotspot_data</code></h6>
+        </div>
+        <div class="card-body">
+          <p class="text-secondary small">Shard key: <code>&#123; ts: 1 &#125;</code> (monotonically increasing timestamp)</p>
+          <div class="d-flex gap-2 flex-wrap">
+            <button class="btn btn-outline-danger btn-action" onclick="simulate('hotspot')">
+              <i class="bi bi-play-fill me-1"></i>Simulate Distribution
+            </button>
+            <button class="btn btn-danger btn-action" onclick="insertData('hotspot')">
+              <i class="bi bi-database-add me-1"></i>Insert to MongoDB
+            </button>
+          </div>
+          <div id="hotspot-result" class="mt-3" style="display:none;">
+            <div class="d-flex flex-column gap-2" id="hotspot-bars"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-header">
+          <h6 class="mb-0"><i class="bi bi-check-circle me-2 even-color"></i>Collection 2: <code>even_data</code></h6>
+        </div>
+        <div class="card-body">
+          <p class="text-secondary small">Shard key: <code>&#123; user_id: "hashed" &#125;</code> (hashed random ObjectId)</p>
+          <div class="d-flex gap-2 flex-wrap">
+            <button class="btn btn-outline-success btn-action" onclick="simulate('hashed')">
+              <i class="bi bi-play-fill me-1"></i>Simulate Distribution
+            </button>
+            <button class="btn btn-success btn-action" onclick="insertData('hashed')">
+              <i class="bi bi-database-add me-1"></i>Insert to MongoDB
+            </button>
+          </div>
+          <div id="hashed-result" class="mt-3" style="display:none;">
+            <div class="d-flex flex-column gap-2" id="hashed-bars"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Activity Log -->
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h6 class="mb-0"><i class="bi bi-terminal me-2"></i>Activity Log</h6>
+      <button class="btn btn-sm btn-outline-secondary" onclick="clearLog()">Clear</button>
+    </div>
+    <div class="card-body p-0">
+      <div class="log-box m-3" id="log-box">
+        <span class="ok">▶ Ready. Click Simulate or Insert to start.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Distribution Chart -->
+  <div class="card mb-4">
+    <div class="card-header"><h6 class="mb-0"><i class="bi bi-bar-chart-fill me-2"></i>Shard Distribution Comparison</h6></div>
+    <div class="card-body">
+      <div id="chart-placeholder" class="text-center text-secondary py-5">
+        <i class="bi bi-bar-chart-line fs-1 d-block mb-3"></i>
+        Run simulations to see distribution charts
+      </div>
+      <canvas id="distChart" style="display:none;max-height:300px;"></canvas>
+    </div>
+  </div>
+
+  <!-- MongoDB collStats simulation -->
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between">
+      <h6 class="mb-0"><i class="bi bi-clipboard-data me-2"></i>collStats Output (simulated / live)</h6>
+      <button class="btn btn-sm btn-outline-info" onclick="fetchStats()">
+        <i class="bi bi-arrow-clockwise me-1"></i>Refresh Stats
+      </button>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <h6 class="hotspot-color"><i class="bi bi-collection me-1"></i>hotspot_data</h6>
+          <div class="explain-box" id="stats-hotspot">{ "note": "Click 'Refresh Stats' or Insert to MongoDB first" }</div>
+        </div>
+        <div class="col-md-6">
+          <h6 class="even-color"><i class="bi bi-collection me-1"></i>even_data</h6>
+          <div class="explain-box" id="stats-hashed">{ "note": "Click 'Refresh Stats' or Insert to MongoDB first" }</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Query Plans -->
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between">
+      <h6 class="mb-0"><i class="bi bi-search me-2"></i>Query Plan Comparison – explain()</h6>
+      <button class="btn btn-sm btn-success" onclick="fetchQueryPlans()">
+        <i class="bi bi-play-fill me-1"></i>Run Query Plans
+      </button>
+    </div>
+    <div class="card-body">
+      <p class="text-secondary small mb-3">
+        Range query on <code>hotspot_data</code>: <code class="d-inline-block">find(&#123; ts: &#123; $gte: ISODate('2025-01-01') &#125; &#125;)</code><br/>
+        Range query on <code>even_data</code>: <code class="d-inline-block">find(&#123; user_id: &#123; $gte: &lt;low_oid&gt; &#125; &#125;)</code>
+      </p>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <h6 class="hotspot-color"><i class="bi bi-pin-map me-1"></i>hotspot_data – range on ts</h6>
+          <div class="explain-box" id="explain-hotspot">Click "Run Query Plans" →</div>
+        </div>
+        <div class="col-md-6">
+          <h6 class="even-color"><i class="bi bi-broadcast me-1"></i>even_data – range on user_id (hashed)</h6>
+          <div class="explain-box" id="explain-hashed">Click "Run Query Plans" →</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Findings report -->
+  <div class="card mb-4">
+    <div class="card-header"><h6 class="mb-0"><i class="bi bi-file-earmark-text me-2 text-info"></i>Lab Report: Findings &amp; Conclusions</h6></div>
+    <div class="card-body">
+      <div class="row g-4">
+        <div class="col-md-6">
+          <h6 class="hotspot-color"><i class="bi bi-exclamation-triangle me-1"></i>Why Monotonic Keys Cause Hotspots</h6>
+          <ul class="text-secondary small">
+            <li class="mb-2">In a ranged sharded collection, MongoDB owns consecutive key ranges per chunk.</li>
+            <li class="mb-2">Every new document with <code>ts = now()</code> always lands in the <em>highest</em> chunk, which always lives on one shard until the balancer migrates it.</li>
+            <li class="mb-2">The balancer can migrate only after a chunk split; with high insert rates, chunks split and migrate cannot keep up.</li>
+            <li class="mb-2">Result: ~95% of writes route to Shard A, starving Shard B of work and saturating Shard A's disk and CPU.</li>
+            <li class="mb-2">Read queries for recent data also fan out to Shard A only, negating horizontal scale.</li>
+          </ul>
+        </div>
+        <div class="col-md-6">
+          <h6 class="even-color"><i class="bi bi-check2-circle me-1"></i>When a Ranged Key Still Makes Sense</h6>
+          <ul class="text-secondary small">
+            <li class="mb-2"><strong>Time-series archiving</strong>: If most queries are date-range scans and writes are batch (not continuous), a ranged date key enables efficient sequential scans with minimal cross-shard joins.</li>
+            <li class="mb-2"><strong>Zone sharding</strong>: Pair a ranged date key with zone sharding – assign recent date ranges to fast NVMe shards and old ranges to cold storage shards.</li>
+            <li class="mb-2"><strong>Data lifecycle</strong>: When the workload is "insert once, read later" (logs, audit trails) and you drop old shards by date, range sharding with TTL indexes simplifies management.</li>
+            <li class="mb-2"><strong>Low write rate</strong>: At &lt;100 insertions/sec the balancer keeps up with chunk migrations; hotspots are transient.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="p-3 mt-3 rounded" style="background:#0d1117;border:1px solid #30363d;">
+        <strong class="text-warning"><i class="bi bi-lightbulb me-1"></i>Key Takeaway:</strong>
+        <span class="text-secondary small ms-1">
+          Use <strong>hashed shard keys</strong> when write throughput and even distribution matter most.
+          Use <strong>ranged shard keys</strong> when sequential scan efficiency and data lifecycle management matter more than write parallelism.
+          Never use a bare monotonically-increasing key for a high-throughput write workload.
+        </span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="text-center text-secondary py-4 small border-top" style="border-color:#30363d!important">
+  NoSQL Lab 11 · MongoDB Sharding & Shard Key Analysis · Docker Containerised
+</footer>
+
+<script>
+let distChartInst = null;
+const distData = { hotspot: null, hashed: null };
+
+function log(msg, type='ok') {
+  const box = document.getElementById('log-box');
+  const ts = new Date().toLocaleTimeString();
+  box.innerHTML += `\n<span class="${type}">[${ts}] ${msg}</span>`;
+  box.scrollTop = box.scrollHeight;
+}
+function clearLog() { document.getElementById('log-box').innerHTML = '<span class="ok">▶ Log cleared.</span>'; }
+
+function renderBars(containerId, buckets, color) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  const max = Math.max(...buckets.map(b => b.docs));
+  buckets.forEach(b => {
+    const pct = (b.docs / max * 100).toFixed(0);
+    container.innerHTML += `
+      <div class="d-flex align-items-center gap-2">
+        <span style="width:70px;font-size:.8rem;color:#9ca3af;">${b.shard}</span>
+        <div style="flex:1;background:#30363d;border-radius:6px;height:28px;">
+          <div class="shard-bar" style="width:${pct}%;background:${color};height:100%;display:flex;align-items:center;padding:0 10px;">
+            <span style="font-size:.8rem;font-weight:600;">${b.docs.toLocaleString()} docs (${b.pct}%)</span>
+          </div>
+        </div>
+      </div>`;
+  });
+}
+
+function updateDistChart() {
+  const ctx = document.getElementById('distChart');
+  const ph = document.getElementById('chart-placeholder');
+  if (!distData.hotspot && !distData.hashed) return;
+  ph.style.display = 'none';
+  ctx.style.display = 'block';
+
+  const hotspotBuckets = distData.hotspot || [];
+  const hashedBuckets  = distData.hashed  || [];
+  const labels = hotspotBuckets.length ? hotspotBuckets.map(b => b.shard) : hashedBuckets.map(b => b.shard);
+  const datasets = [];
+  if (distData.hotspot) datasets.push({
+    label: 'hotspot_data (ts: 1)', data: hotspotBuckets.map(b => b.docs),
+    backgroundColor: '#ef444488', borderColor: '#ef4444', borderWidth:2, borderRadius:6
+  });
+  if (distData.hashed) datasets.push({
+    label: 'even_data (user_id: hashed)', data: hashedBuckets.map(b => b.docs),
+    backgroundColor: '#00ED6488', borderColor: '#00ED64', borderWidth:2, borderRadius:6
+  });
+
+  if (distChartInst) distChartInst.destroy();
+  distChartInst = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color:'#e6edf3' } } },
+      scales: {
+        x: { ticks:{ color:'#9ca3af' }, grid:{ color:'#30363d' } },
+        y: { ticks:{ color:'#9ca3af' }, grid:{ color:'#30363d' } }
+      }
+    }
+  });
+}
+
+async function simulate(type) {
+  log(`Simulating ${type} distribution...`, 'ok');
+  const res = await fetch(`/api/simulate/${type}`);
+  const data = await res.json();
+  distData[type] = data.buckets;
+  const resultDiv = document.getElementById(`${type}-result`);
+  resultDiv.style.display = 'block';
+  const color = type === 'hotspot' ? '#ef4444' : '#00ED64';
+  renderBars(`${type}-bars`, data.buckets, color);
+  log(`${type} simulation done: ${data.buckets.map(b => `${b.shard}=${b.docs}(${b.pct}%)`).join(', ')}`,
+      type === 'hotspot' ? 'warn' : 'ok');
+  updateDistChart();
+}
+
+async function insertData(type) {
+  log(`Inserting 10 000 docs into ${type === 'hotspot' ? 'hotspot_data' : 'even_data'}...`, 'ok');
+  const endpoint = type === 'hotspot' ? '/api/insert/hotspot' : '/api/insert/hashed';
+  try {
+    const res = await fetch(endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({n:10000}) });
+    const data = await res.json();
+    if (data.ok) {
+      log(`✓ Inserted ${data.inserted} docs in ${data.elapsed_s}s`, 'ok');
+      await simulate(type);
+      await fetchStats();
+    } else {
+      log(`⚠ MongoDB not available: ${data.error}. Running simulation instead.`, 'warn');
+      await simulate(type);
+    }
+  } catch(e) {
+    log(`⚠ ${e.message} – running simulation.`, 'warn');
+    await simulate(type);
+  }
+}
+
+async function fetchStats() {
+  try {
+    const res = await fetch('/api/stats');
+    const data = await res.json();
+    if (data.ok) {
+      const fmt = s => s ? JSON.stringify(s, null, 2) : '{ "status": "collection not yet created – insert data first" }';
+      document.getElementById('stats-hotspot').textContent = fmt(data.stats.hotspot_data);
+      document.getElementById('stats-hashed').textContent  = fmt(data.stats.even_data);
+      log('Stats refreshed from MongoDB', 'ok');
+    } else {
+      log(`Stats: ${data.error}`, 'warn');
+    }
+  } catch(e) {
+    log(`Stats unavailable: ${e.message}`, 'warn');
+  }
+}
+
+async function fetchQueryPlans() {
+  log('Fetching query plan simulations...', 'ok');
+  const res = await fetch('/api/simulate/queries');
+  const data = await res.json();
+  document.getElementById('explain-hotspot').textContent = JSON.stringify(data.hotspot_range, null, 2);
+  document.getElementById('explain-hashed').textContent  = JSON.stringify(data.hashed_range, null, 2);
+  log('Query plans loaded. Note: hotspot_data targets 1 shard; even_data broadcasts to all.', 'ok');
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
